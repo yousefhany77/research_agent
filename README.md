@@ -19,7 +19,7 @@ Create detailed reports in markdown format.
 The library supports multiple AI models
 
 - [x] OpenAI
-- [] Mistral AI
+- [ ] Mistral AI
 
 ## Getting Started
 
