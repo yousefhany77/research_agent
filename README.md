@@ -6,7 +6,7 @@
   </a>
 
   <a href="https://github.com/yousefhany77/research-agent/actions">
-    <img alt="Coverage" src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/yousefhany77/d4cff36886172dd5d7388c1a9199782d/raw/0ea8a505354e198fdf0ac12b9f55476efb1bb7ad/ts-npm-template-coverage.json">
+    <img alt="Coverage" src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/yousefhany77/d4cff36886172dd5d7388c1a9199782d/raw/b9c8fd01964c0cb7b0eee55120b1a4dda38777f2/ts-npm-template-coverage.json">
   </a>
 </p>
 
