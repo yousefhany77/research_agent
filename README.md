@@ -1,18 +1,18 @@
-<h1 align="center" style="border-bottom: none;">research-agent</h1>
+<h1 align="center" style="border-bottom: none;">research_agent</h1>
 
 <p align="center">
   <a href="ttps://github.com/yousefhany77/research_agent/actions/workflows/test-and-release.yml">
     <img alt="Build states" src="https://github.com/yousefhany77/research_agent/actions/workflows/test-and-release.yml/badge.svg">
   </a>
 
-  <a href="https://github.com/yousefhany77/research-agent/actions">
+  <a href="https://github.com/yousefhany77/research_agent/actions">
     <img alt="Coverage" src="https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/yousefhany77/d4cff36886172dd5d7388c1a9199782d/raw/b9c8fd01964c0cb7b0eee55120b1a4dda38777f2/ts-npm-template-coverage.json">
   </a>
 </p>
 
 ## Description
 
-`research-agent` leverages AI to automate the research process. It can:
+`research_agent` leverages AI to automate the research process. It can:
 Analyze websites and extract relevant information.
 Generate summaries of findings.
 Create detailed reports in markdown format.
@@ -26,14 +26,14 @@ The library supports multiple AI models
 ### Install
 
 ```
-pnpm add research-agent
+pnpm add research_agent
 ```
 
 ### Usage
 
 ```ts
 import { writeFileSync } from 'fs';
-import { ResearchManager } from 'research-agent';
+import { ResearchManager } from 'research_agent';
 
 const writeToFile = async (fileName, data) => {
   writeFileSync(fileName, data);
