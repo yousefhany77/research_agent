@@ -131,10 +131,13 @@
     "@langchain/community": "^0.0.33",
     "@langchain/core": "0.1.36",
     "@langchain/openai": "^0.0.14",
+    "cheerio": "1.0.0-rc.12",
     "langchain": "^0.1.23",
     "langsmith": "0.1.7",
+    "puppeteer": "^19.11.1",
     "zod": "^3.22.4",
-    "zod-to-json-schema": "^3.22.4"
+    "zod-to-json-schema": "^3.22.4",
+    "zod-validation-error": "^3.0.2"
   },
   "pnpm": {
     "overrides": {}

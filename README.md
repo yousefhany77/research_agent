@@ -17,13 +17,33 @@ A research agent that uses AI to research the web and summarize and create repor
 ## Getting Started
 
 ## Features
-✨ Supports multiple models like Open AI,Mistral AI ,
 
+✨ Supports multiple models like Open AI,Mistral AI ,
 
 ### Install
 
 ```
 pnpm add research-agent
+```
+
+### Usage
+
+```ts
+import { writeFileSync } from 'fs';
+import { ResearchManager } from './lib/agents/ResearchManager/ResearchManager.js';
+const writeToFile = async (fileName: string, data: string) => {
+  writeFileSync(fileName, data);
+};
+
+const main = async () => {
+  const manager = new ResearchManager(); // you can customize the llm model 
+  const result = await manager.search('Who is this person in that website "www.youssefhany.dev"?');
+
+  // write to a markdown file
+  await writeToFile('output.md', result);
+};
+
+void main();
 ```
 
 # Contributing
