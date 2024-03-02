@@ -1,5 +1,5 @@
 {
-  "name": "research-agent",
+  "name": "research_agent",
   "version": "1.0.0",
   "description": "A research agent that uses AI to research the web and summarize and create reports",
   "type": "module",
