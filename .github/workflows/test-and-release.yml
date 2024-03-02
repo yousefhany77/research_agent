@@ -63,7 +63,7 @@ jobs:
         uses: schneegans/dynamic-badges-action@v1.6.0
         with:
           auth: ${{ secrets.GIST_SECRET }}
-          gistID: b70e2342a5be5259b768aace465f777a
+          gistID: d4cff36886172dd5d7388c1a9199782d
           filename: ts-npm-template-coverage.json
           label: Code Coverage
           message: ${{ env.COVERAGE }}
@@ -126,6 +126,6 @@ jobs:
 
       - name: Release 🚀
         env:
-          GITHUB_TOKEN: ${{ secrets.TTS_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.RESEARCH_AGENT_GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: pnpm semantic-release
