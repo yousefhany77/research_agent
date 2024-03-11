@@ -1,10 +1,10 @@
 # research-agent
 
-## 2.0.0
+## 1.1.0
 
 ### Major Changes
 
-- # Changes for Version 2.0.0
+- # Changes for Version 1.1.0
 
   ## Summary
 
@@ -23,33 +23,29 @@
   ### Example with Mistral AI
 
   ```ts
-  import { WebPageLoaderWithSummary } from "research_agent";
-  import { ChatMistralAI } from "@langchain/mistralai";
+  import { WebPageLoaderWithSummary } from 'research_agent';
+  import { ChatMistralAI } from '@langchain/mistralai';
 
   const main = async (): Promise<void> => {
     const chatgpt = createOpenAIChatModel({
-      modelName: "gpt-3.5-turbo",
+      modelName: 'gpt-3.5-turbo',
     });
     const mistralai = new ChatMistralAI({
       apiKey: process.env.MISTRAL_API_KEY,
-      modelName: "mistral-large-latest",
+      modelName: 'mistral-large-latest',
     });
 
     const questionGeneratorAgent = new QuestionGeneratorAgent(mistralai); // still not stable with mistral ai
-    const researchManager = new ResearchManager(
-      mistralai,
-      questionGeneratorAgent,
-      {
-        maxIterations: 2,
-        researchWorkerConfig: {
-          llmModel: chatgpt,
-          tools: {
-            webLoader: new WebPageLoaderWithSummary(mistralai),
-          },
+    const researchManager = new ResearchManager(mistralai, questionGeneratorAgent, {
+      maxIterations: 2,
+      researchWorkerConfig: {
+        llmModel: chatgpt,
+        tools: {
+          webLoader: new WebPageLoaderWithSummary(mistralai),
         },
       },
-    );
-    const query = "Write a report about ramadan and its importance";
+    });
+    const query = 'Write a report about ramadan and its importance';
     await researchManager.search(query);
   };
 
@@ -63,20 +59,18 @@
 - Search the web using the search agent
 
   ```ts
-  import { writeFileSync } from "fs";
-  import { ResearchManager } from "./lib/agents/ResearchManager/ResearchManager.js";
+  import { writeFileSync } from 'fs';
+  import { ResearchManager } from './lib/agents/ResearchManager/ResearchManager.js';
   const writeToFile = async (fileName: string, data: string) => {
     writeFileSync(fileName, data);
   };
 
   const main = async () => {
     const manager = new ResearchManager(); // you can customize the llm model
-    const result = await manager.search(
-      'Who is this person in that website "www.youssefhany.dev"?',
-    );
+    const result = await manager.search('Who is this person in that website "www.youssefhany.dev"?');
 
     // write to a markdown file
-    await writeToFile("output.md", result);
+    await writeToFile('output.md', result);
   };
 
   void main();
