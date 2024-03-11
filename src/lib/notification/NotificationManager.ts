@@ -3,7 +3,7 @@ export enum NotificationActor {
   ResearchManager = 'ResearchManager',
   QuestionGeneratorAgent = 'QuestionGeneratorAgent',
 }
-type NotificationType =
+export type NotificationType =
   | `${NotificationActor}:${'Tool' | 'Task'}:${'Start' | 'End' | 'Error'}`
   | `${NotificationActor}:initialized`
   | `${NotificationActor}:done`;
