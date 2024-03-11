@@ -10,7 +10,10 @@ const schema = z.object({
   url: z.string().describe('The URL of the web page to load. and scrape the content from.'),
 });
 
-const func = async ({ url }: z.infer<typeof schema>): Promise<string> => {
+const func = async (
+  { url }: z.infer<typeof schema>,
+  opinions?: ConstructorParameters<typeof PuppeteerWebBaseLoader>[1]
+): Promise<string> => {
   const loaderWithOptions = new PuppeteerWebBaseLoader(url, {
     launchOptions: {
       headless: 'new',
@@ -18,6 +21,7 @@ const func = async ({ url }: z.infer<typeof schema>): Promise<string> => {
     gotoOptions: {
       waitUntil: 'networkidle2',
     },
+    ...opinions,
   });
   // remove the html tags and convert it to markdown
   const content = NodeHtmlMarkdown.translate(await loaderWithOptions.scrape());
@@ -53,7 +57,10 @@ class WebPageLoaderWithSummary extends DynamicStructuredTool {
     ['human', '{input}'],
     ['human', 'Summarize to answer {q}'],
   ]);
-  constructor(llmModel: BaseLanguageModelInterface) {
+  constructor(
+    llmModel: BaseLanguageModelInterface,
+    puppeteerOptions?: ConstructorParameters<typeof PuppeteerWebBaseLoader>[1]
+  ) {
     super({
       name: 'Web_Page_Loader_With_Summary',
       schema: z.object({
@@ -69,7 +76,7 @@ class WebPageLoaderWithSummary extends DynamicStructuredTool {
           return this.searchResult[url];
         }
 
-        const text = await func({ url });
+        const text = await func({ url }, puppeteerOptions);
 
         const summary = await this.prompt
           .pipe(llmModel)
