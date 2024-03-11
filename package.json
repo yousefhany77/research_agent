@@ -9,7 +9,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/yousefhany77/research_agent.git"
+    "url": "git+https://github.com/yousefhany77/research_agent.git"
   },
   "homepage": "https://github.com/yousefhany77/research_agent",
   "bugs": "https://github.com/yousefhany77/research_agent/issues",
