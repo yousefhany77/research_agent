@@ -3,44 +3,52 @@
  */
 import { TavilySearchResults } from '@langchain/community/tools/tavily_search';
 import { ChatPromptTemplate, MessagesPlaceholder } from '@langchain/core/prompts';
-import { AgentExecutor, createOpenAIFunctionsAgent } from 'langchain/agents';
-import { PuppeteerWebBaseLoader } from 'langchain/document_loaders/web/puppeteer';
-import { formatDocumentsAsString } from 'langchain/util/document';
+import { AgentExecutor, createOpenAIToolsAgent } from 'langchain/agents';
+import { BaseCallbackHandler } from 'langchain/callbacks';
+import { Serialized } from 'langchain/load/serializable';
+import { ChatMessageHistory } from 'langchain/memory';
+import { RunnableWithMessageHistory } from 'langchain/runnables';
 
-import { WikipediaQueryRun } from '@langchain/community/tools/wikipedia_query_run';
-import { DynamicTool, Tool } from 'langchain/tools';
+import { DynamicStructuredTool, Tool } from 'langchain/tools';
+import NotificationManager, { Notification, NotificationActor } from '~/lib/notification/NotificationManager.js';
+import { createWebLoaderTool } from '~/lib/tools/WebPageLoader.js';
 import { Env } from '~/utils/Env.js';
 import createOpenAIChatModel from '~/utils/createOpenAIChatModel.js';
-const webLoaderTool = new DynamicTool({
-  name: 'Web_Page_Loader',
-  description:
-    'This tool loads a web page and returns the content as a string. by using puppeteer to scrape the page. You should pass the URL as input',
-
-  func: async (url): Promise<string> => {
-    console.log(`🔎 Using Web_Page_Loader Tool to load "${url}" 🔎`);
-    const loaderWithOptions = new PuppeteerWebBaseLoader(url);
-    const content = await loaderWithOptions.load();
-    return formatDocumentsAsString(content);
-  },
-});
-
-const wikipediaSearch = new WikipediaQueryRun({
-  topKResults: 3,
-  maxDocContentLength: 4000,
-});
+import { generateName } from '~/utils/genrateRandomNames.js';
 
 export class SearchWorker {
-  private readonly tools: Record<string, Tool> = {
-    search: new TavilySearchResults({ maxResults: 1, apiKey: Env.get('TAVILY_API_KEY').toString() }),
-    webLoader: webLoaderTool,
-    wikipediaSearch,
-  };
+  private readonly tools: Record<string, Tool | DynamicStructuredTool>;
+  public readonly workerName = generateName('Search Worker: ');
+  private messageHistory = new ChatMessageHistory();
+  private prompt = ChatPromptTemplate.fromMessages([
+    [
+      'system',
+      'You Are a Search Worker. You have been asked to search for the following query:{input} and you need to find the best information and finish the task. and write a report about your findings. and if there is a chat history you should use it to help you in your search. you have a set of tools that you can use to help you in your search',
+    ],
+    new MessagesPlaceholder('chat_history'),
+    new MessagesPlaceholder('agent_scratchpad'),
+    ['human', '{input}'],
+  ]);
 
   /**
    * Creates an instance of SearchWorker.
    * @param llmModel The OpenAI chat model used by the SearchWorker.
    */
-  constructor(private readonly llmModel = createOpenAIChatModel()) {}
+  constructor(
+    private readonly llmModel = createOpenAIChatModel(),
+    private readonly researchResults: Record<string, string> = {},
+    tools?: Record<string, Tool | DynamicStructuredTool> & Partial<DefaultTools>
+  ) {
+    this.tools = {
+      search: new TavilySearchResults({ maxResults: 1, apiKey: Env.get('TAVILY_API_KEY').toString() }),
+      webLoader: createWebLoaderTool(this.researchResults),
+      ...tools,
+    };
+    this.notify({
+      message: `${this.workerName} has been initialized`,
+      type: 'SearchWorker:initialized',
+    });
+  }
 
   /**
    * Performs a search operation using the specified query.
@@ -48,34 +56,50 @@ export class SearchWorker {
    * @returns A promise that resolves to the search result as a string.
    */
   public async search(input: string): Promise<string> {
-    const prompt = ChatPromptTemplate.fromMessages([
-      [
-        'system',
-        'You Are a Search Worker. You have been asked to search for the following query:{input} and you need to find the best information and finish the task. and write a report about your findings. and if there is a chat history you should use it to help you in your search. you have a set of tools that you can use to help you in your search',
-      ],
-      new MessagesPlaceholder('chat_history'),
-      ['human', '{input}'],
-      new MessagesPlaceholder('agent_scratchpad'),
-    ]);
+    this.notify({
+      message: `SearchWorker is searching for "${input}"`,
+      type: 'SearchWorker:Task:Start',
+      payload: { query: input },
+    });
 
     const tools = Object.values(this.tools);
-    const agent = await createOpenAIFunctionsAgent({
+    const agent = await createOpenAIToolsAgent({
       llm: this.llmModel,
       tools,
-      prompt,
+      prompt: this.prompt,
     });
 
     const agentExecutor = new AgentExecutor({
       agent,
       tools,
     });
+    const agentWithChatHistory = new RunnableWithMessageHistory({
+      runnable: agentExecutor,
+      getMessageHistory: () => this.messageHistory,
+      inputMessagesKey: 'input',
+      historyMessagesKey: 'chat_history',
+    });
 
-    const response = (await agentExecutor.invoke({
-      input,
-    })) as { output: string };
+    const response = (await agentWithChatHistory.invoke(
+      {
+        input,
+      },
+      {
+        callbacks: [new SearchWorkerCallbackHandlers()],
+        runName: this.workerName,
+        configurable: {
+          sessionId: this.workerName,
+        },
+      }
+    )) as { output: string };
 
-    console.log('SearchWorker: Search result', response?.output);
-    return response?.output ?? 'No results found';
+    this.notify({
+      message: `SearchWorker has finished searching for "${input}"`,
+      type: 'SearchWorker:Task:End',
+      payload: { query: input, response },
+    });
+
+    return `# Report on "${input}"\n${response.output}`;
   }
 
   /**
@@ -93,5 +117,64 @@ export class SearchWorker {
    */
   public removeTool(name: string): void {
     delete this.tools[name];
+  }
+
+  private notify({ message, type, payload }: Pick<Notification, 'message' | 'type' | 'payload'>): void {
+    return NotificationManager.notify({
+      actor: NotificationActor.SearchWorker,
+      createdAt: new Date(),
+      createdBy: this.workerName,
+      message,
+      type,
+      payload,
+    });
+  }
+}
+
+type DefaultTools = {
+  search: TavilySearchResults;
+  webLoader: ReturnType<typeof createWebLoaderTool>;
+};
+
+class SearchWorkerCallbackHandlers extends BaseCallbackHandler {
+  name = 'SearchWorkerCallbackHandlers';
+  private getToolName(runId: string, tool?: Serialized): string {
+    if (!tool) {
+      return this.runMap.get(runId) ?? 'unknown tool';
+    }
+    const toolName = tool?.id?.[tool.id.length - 1] ?? 'unknown tool';
+    this.runMap = this.runMap.set(runId, toolName);
+    return toolName;
+  }
+  private runMap = new Map<string, string>();
+
+  handleToolStart(
+    tool: Serialized,
+    input: string, // serialized json
+    runId: string
+  ): void {
+    const toolName = this.getToolName(runId, tool);
+    NotificationManager.notify({
+      actor: NotificationActor.SearchWorker,
+      createdAt: new Date(),
+      createdBy: 'SearchWorker',
+      message: `SearchWorker is using ${toolName} to search for "${input}"`,
+      type: 'SearchWorker:Tool:Start',
+      payload: { tool, input, runId },
+    });
+  }
+  handleToolEnd(
+    output: string, // serialized json
+    runId: string
+  ): void {
+    const toolName = this.runMap.get(runId);
+    NotificationManager.notify({
+      actor: NotificationActor.SearchWorker,
+      createdAt: new Date(),
+      createdBy: 'SearchWorker',
+      message: `SearchWorker has finished using ${toolName} to search`,
+      type: 'SearchWorker:Tool:End',
+      payload: { output, runId },
+    });
   }
 }

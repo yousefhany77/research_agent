@@ -1,37 +1,17 @@
-import { convertToOpenAIFunction } from '@langchain/core/utils/function_calling';
-import { AgentExecutor, AgentStep } from 'langchain/agents';
-import { formatToOpenAIFunctionMessages } from 'langchain/agents/format_scratchpad';
-import { OpenAIFunctionsAgentOutputParser } from 'langchain/agents/openai/output_parser';
+import { StringOutputParser } from '@langchain/core/output_parsers';
+import { ChatOpenAI } from '@langchain/openai';
+import { AgentExecutor, createOpenAIToolsAgent } from 'langchain/agents';
+import { BaseChatModel } from 'langchain/chat_models/base';
 import { loadEvaluator } from 'langchain/evaluation';
-import { ChatPromptTemplate, MessagesPlaceholder, SystemMessagePromptTemplate } from 'langchain/prompts';
-import { RunnableSequence } from 'langchain/runnables';
-import { DynamicTool } from 'langchain/tools';
+import { ChatPromptTemplate, MessagesPlaceholder } from 'langchain/prompts';
+import { DynamicStructuredTool, DynamicTool } from 'langchain/tools';
+import NotificationManager, { Notification, NotificationActor } from '~/lib/notification/NotificationManager.js';
 import createOpenAIChatModel from '~/utils/createOpenAIChatModel.js';
 import { QuestionGeneratorAgent } from '../QuestionGenerator/QuestionGenerator.js';
 import { SearchWorker } from '../SearchWorker/SearchWorker.js';
 
-const researchManagerPrompt = new ChatPromptTemplate({
-  promptMessages: [
-    SystemMessagePromptTemplate.fromTemplate(`You are a research manager. you have been asked to do "{query}". You need to find the best information and finish the task. You have workers that helps you in your task and these are there results from there research: results \n{results}. \nYou need to use these information to write a detailed report on the topic in markdown format
-`),
-    new MessagesPlaceholder('agent_scratchpad'),
-  ],
-  inputVariables: ['query', 'results', 'agent_scratchpad'],
-});
-
-const researchWorkerAsTool = new DynamicTool({
-  name: 'Research_Worker',
-  description:
-    'This tool is a research worker that helps the research manager to find the best information and finish the task. it can search the web or visit websites and use the information to write a detailed report on the topic in markdown format.',
-  func: async (input: string): Promise<string> => {
-    console.log(`Using ResearchWorker Tool to search for "${input}"`);
-    const worker = new SearchWorker();
-    const results = await worker.search(input);
-    return results;
-  },
-});
-
-const researchManagerTools = [researchWorkerAsTool];
+const researchManagerSystemPrompt = `You are a research manager. you have been asked to do "{query}". You need to find the best information and finish the task. You have workers that helps you in your task and these are there results from there research: results \n{results}. \nYou need to use these information to write a detailed report on the topic in markdown format. and follow the instructions: {instructions}
+`;
 
 /**
  * @description ResearchManager is an agent that manages the research process.
@@ -42,16 +22,29 @@ const researchManagerTools = [researchWorkerAsTool];
  * @param questionGenerator The QuestionGeneratorAgent used by the ResearchManager. @see {@link QuestionGeneratorAgent}
  */
 export class ResearchManager {
+  private readonly searchWorkersToolsResults: Record<string, string> = {};
+  private readonly researchManagerTools: (DynamicStructuredTool | DynamicTool)[] = [];
+
   constructor(
-    private readonly llmModel = createOpenAIChatModel({
-      maxTokens: 4000,
-    }),
+    private readonly llmModel: BaseChatModel = createOpenAIChatModel(),
     private readonly questionGenerator = new QuestionGeneratorAgent(),
-    private readonly searchWorker = new SearchWorker(),
-    private readonly config = {
+    private readonly config: {
+      maxIterations: number;
+      researchManagerTools?: (DynamicStructuredTool | DynamicTool)[];
+      researchWorkerConfig?: {
+        llmModel?: ChatOpenAI;
+        tools?: ConstructorParameters<typeof SearchWorker>[2];
+      };
+    } = {
       maxIterations: 2,
     }
-  ) {}
+  ) {
+    this.notify({
+      message: 'ResearchManager has been initialized',
+      type: `${NotificationActor.ResearchManager}:initialized`,
+    });
+    this.researchManagerTools = config.researchManagerTools ?? [];
+  }
 
   /**
    * Search until we get a valid result for the given query
@@ -67,22 +60,44 @@ export class ResearchManager {
       valid: false,
       reason: undefined,
     };
+    this.notify({
+      message: `ResearchManager is searching for "${query}"`,
+      type: `${NotificationActor.ResearchManager}:Task:Start`,
+      payload: { query },
+    });
     for (let i = 0; i < this.config.maxIterations; i++) {
-      result = await this.searchWorker.search(
+      const searchWorker = new SearchWorker(
+        this.config?.researchWorkerConfig?.llmModel,
+        this.searchWorkersToolsResults,
+        this.config?.researchWorkerConfig?.tools
+      );
+      result = await searchWorker.search(
         i === 0
           ? query
           : `
-        I Asked for "${query}" but the result was "${result}"
+        I Asked for "${query}" but the result was invalid.
         And the reason was "${validateQueryResult.reason}"
         So Again I'm asking for "${query}
         `
       );
+      this.notify({
+        message: `ResearchManager has received the result for "${query}" but it was invalid. The reason was "${validateQueryResult.reason}", so the ${searchWorker.workerName} will search again.`,
+        type: `${NotificationActor.ResearchManager}:Task:Error`,
+      });
       validateQueryResult = await this.validateSearchResult(query, result);
       if (validateQueryResult.valid) {
+        this.notify({
+          message: `ResearchManager has approved the result for "${query}" from ${searchWorker.workerName}`,
+          type: `${NotificationActor.ResearchManager}:Task:End`,
+        });
         break;
       }
     }
     if (!validateQueryResult.valid) {
+      this.notify({
+        message: `ResearchManager couldn't find a valid result for "${query}" after ${this.config.maxIterations} iterations. The reason was "${validateQueryResult.reason}"`,
+        type: `${NotificationActor.ResearchManager}:Task:Error`,
+      });
       result = `I'm sorry, I couldn't find a valid result for "${query}" after ${this.config.maxIterations} iterations. The reason was "${validateQueryResult.reason}" Try again with more context or a different question.`;
     }
     return result;
@@ -93,35 +108,65 @@ export class ResearchManager {
    * @param query The search query.
    * @returns A promise that resolves to the search result as a string.
    */
-  public async search(query: string): Promise<string> {
+  public async search(query: string, instructions?: string): Promise<string> {
+    this.notify({
+      message: `ResearchManager has been asked to search for "${query}"`,
+      type: `${NotificationActor.ResearchManager}:Task:Start`,
+    });
     const { questions } = await this.questionGenerator.generateQuestions(query);
     const promises = questions.map((q) => this.searchUntilValidResult(q));
     const results = await Promise.all(promises);
-    const modelWithFunctions = this.llmModel.bind({
-      functions: researchManagerTools.map((tool) => convertToOpenAIFunction(tool)),
-    });
 
-    console.log(`ResearchManager: Searching for "${query}"`);
-    const runnableAgent = RunnableSequence.from([
-      {
-        query: (i: { query: string; steps: AgentStep[] }) => i.query,
-        agent_scratchpad: (i: { query: string; steps: AgentStep[] }) => formatToOpenAIFunctionMessages(i.steps),
-        results: () => results.join('\n'),
-      },
-      researchManagerPrompt,
-      modelWithFunctions,
-      new OpenAIFunctionsAgentOutputParser(),
-    ]);
-    const executor = AgentExecutor.fromAgentAndTools({
-      agent: runnableAgent,
-      tools: researchManagerTools,
-    });
-    const report = (await executor.invoke({
-      query,
-      results: results.join('\n'),
-    })) as { input: string; output: string };
+    let report: string;
+    if (this.researchManagerTools.length > 0) {
+      const runnableAgent = await createOpenAIToolsAgent({
+        llm: this.llmModel,
+        tools: this.researchManagerTools,
+        prompt: ChatPromptTemplate.fromMessages([
+          ['system', researchManagerSystemPrompt],
+          new MessagesPlaceholder('agent_scratchpad'),
+          ['human', '{query}'],
+        ]),
+      });
+      const chain = new AgentExecutor({
+        agent: runnableAgent,
+        tools: this.researchManagerTools,
+      });
+      const agentResults = (await chain.invoke(
+        {
+          query,
+          results: results.join('\n'),
+          instructions,
+        },
+        {
+          runName: 'ResearchManager',
+        }
+      )) as { input: string; output: string };
+      report = agentResults.output;
+    } else {
+      const researchManagerPrompt = ChatPromptTemplate.fromMessages([
+        ['system', researchManagerSystemPrompt],
+        ['human', '{query}'],
+      ]);
+      const chain = researchManagerPrompt.pipe(this.llmModel).pipe(new StringOutputParser());
+      report = await chain.invoke(
+        {
+          query,
+          results: results.join('\n'),
+          instructions,
+        },
+        {
+          runName: 'ResearchManager',
+        }
+      );
+    }
 
-    return report.output;
+    this.notify({
+      message: `ResearchManager has finished searching for "${query}"`,
+      type: `${NotificationActor.ResearchManager}:Task:End`,
+      payload: { query, results, report },
+    });
+    return report;
   }
 
   /**
@@ -159,5 +204,16 @@ export class ResearchManager {
       valid: res.value === 'Y',
       reason: res.reasoning,
     };
+  }
+
+  private notify({ message, type, payload }: Pick<Notification, 'message' | 'type' | 'payload'>): void {
+    return NotificationManager.notify({
+      actor: NotificationActor.ResearchManager,
+      createdAt: new Date(),
+      createdBy: 'ResearchManager',
+      message,
+      type,
+      payload,
+    });
   }
 }
