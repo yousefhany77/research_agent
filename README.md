@@ -19,7 +19,7 @@ Create detailed reports in markdown format.
 The library supports multiple AI models
 
 - [x] OpenAI
-- [ ] Mistral AI
+- [x] Mistral AI (partial)
 
 ## Getting Started
 
@@ -49,6 +49,41 @@ const main = async () => {
 
 void main();
 ```
+
+
+  ### Example with Mistral AI
+
+  ```ts
+  import { WebPageLoaderWithSummary, QuestionGeneratorAgent, ResearchManager, NotificationManager } from 'research_agent';
+  import { ChatMistralAI } from '@langchain/mistralai';
+
+  const main = async (): Promise<void> => {
+    const chatgpt = createOpenAIChatModel({
+      modelName: 'gpt-3.5-turbo',
+    });
+    const mistralai = new ChatMistralAI({
+      apiKey: process.env.MISTRAL_API_KEY,
+      modelName: 'mistral-large-latest',
+    });
+
+    NotificationManager.addListener(console.log);
+
+    const questionGeneratorAgent = new QuestionGeneratorAgent(mistralai); // still not stable with mistral ai
+    const researchManager = new ResearchManager(mistralai, questionGeneratorAgent, {
+      maxIterations: 2,
+      researchWorkerConfig: {
+        llmModel: chatgpt,
+        tools: {
+          webLoader: new WebPageLoaderWithSummary(mistralai),
+        },
+      },
+    });
+    const query = 'Write a report about ramadan and its importance';
+    await researchManager.search(query);
+  };
+
+  await main();
+  ```
 
 This code snippet creates a ResearchManager instance and uses it to search for information about a person on a specific website. The search results are then written to a markdown file.
 
