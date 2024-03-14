@@ -1,7 +1,5 @@
 import { defineConfig } from 'tsup';
 
-const isProduction = process.env.NODE_ENV === 'production';
-
 export default defineConfig(({ watch = false }) => ({
   clean: true,
   dts: true,
@@ -9,8 +7,8 @@ export default defineConfig(({ watch = false }) => ({
     index: 'src/index.ts',
   },
   external: [],
-  format: ['esm'],
-  minify: isProduction,
-  sourcemap: isProduction,
+  format: ['esm', 'cjs'],
+  minify: true,
+  sourcemap: true,
   watch,
 }));
