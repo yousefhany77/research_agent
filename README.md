@@ -18,6 +18,8 @@ Generate summaries of findings.
 Create detailed reports in markdown format.
 The library supports multiple AI models
 
+checkout frontend app build with the library: https://genie-ai.youssefhany.dev/app
+
 - [x] OpenAI
 - [x] Mistral AI (partial)
 
